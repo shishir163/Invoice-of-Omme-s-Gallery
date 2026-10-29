@@ -211,6 +211,17 @@ tbody input.num{text-align:right;font-weight:700}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 
+/* ---------- pre-order shipping ---------- */
+.preorder{padding:4px 30px 0}
+.preorder > .chip{margin-bottom:0}
+.shipfields{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:9px;padding:10px 12px;border:1px dashed var(--peacock);border-radius:6px;background:#F3FAF9}
+.shipfields .field{margin-bottom:0;min-width:118px}
+.shipfields .field label{min-width:48px}
+.shipfields .field input{max-width:92px}
+.shipfields .shipunit{gap:6px}
+.shipout{margin-left:auto;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--peacock)}
+.shipout strong{color:var(--garnet);font-size:13px;margin-left:4px}
+
 /* ---------- export-only : forces the A4 layout during capture, never affects the screen ---------- */
 .cap-swap{margin:0}
 html.exporting body{background:#fff !important;padding:0 !important}
@@ -222,10 +233,11 @@ html.exporting .paywrap{grid-template-columns:1fr 1fr !important}
 html.exporting .head{flex-wrap:nowrap !important;padding:19px 30px 17px !important}
 html.exporting .invmark{margin-left:auto !important;text-align:right !important;width:auto !important}
 html.exporting .invmark input,html.exporting .invmark .cap-swap{text-align:right !important}
-html.exporting .meta>div,html.exporting .totals,html.exporting .paywrap,html.exporting .foot,html.exporting .addrow,html.exporting .strip{padding-left:30px !important;padding-right:30px !important}
+html.exporting .meta>div,html.exporting .totals,html.exporting .paywrap,html.exporting .foot,html.exporting .addrow,html.exporting .preorder,html.exporting .strip{padding-left:30px !important;padding-right:30px !important}
 html.exporting thead th:first-child,html.exporting tbody td:first-child{padding-left:30px !important}
 html.exporting thead th:last-child,html.exporting tbody td:last-child,html.exporting .linetotal{padding-right:30px !important}
 html.exporting .signrow{flex-direction:row !important;align-items:flex-end !important}
+@media (max-width:820px){ .preorder{padding-left:20px;padding-right:20px} }
 </style>
 </head>
 <body>
@@ -292,6 +304,19 @@ html.exporting .signrow{flex-direction:row !important;align-items:flex-end !impo
 
   <div class="addrow"><button onclick="addRow()">+ Add Another Item</button></div>
 
+  <div class="preorder">
+    <label class="chip"><input type="checkbox" id="shipon" onchange="calc()"> Pre-Order Shipping (By Weight)</label>
+    <div class="shipfields" id="shiprow" style="display:none">
+      <div class="field"><label>Rate</label><input id="shiprate" class="num" type="number" min="0" placeholder="Tk / kg" oninput="calc()"></div>
+      <div class="field"><label>Weight</label><input id="shipwt" class="num" type="number" min="0" placeholder="0" oninput="calc()"></div>
+      <div class="chips shipunit">
+        <label class="chip"><input type="radio" name="shipunit" value="kg" checked onchange="calc()"> KG</label>
+        <label class="chip"><input type="radio" name="shipunit" value="g" onchange="calc()"> Gram</label>
+      </div>
+      <div class="shipout">Shipping <strong id="shipcalc">Tk 0</strong></div>
+    </div>
+  </div>
+
   <div class="totals">
     <div class="notebox">
       <div class="eyebrow">Note</div>
@@ -300,6 +325,7 @@ html.exporting .signrow{flex-direction:row !important;align-items:flex-end !impo
     <div class="sums">
       <div class="sumrow"><span>Subtotal</span><strong id="subtotal">Tk 0</strong></div>
       <div class="sumrow"><span>Delivery Charge</span><input type="number" id="delivery" value="0" min="0" oninput="calc()"></div>
+      <div class="sumrow" id="shipSumRow" style="display:none"><span>Shipping (Pre-Order)</span><strong id="shipamount">Tk 0</strong></div>
       <div class="sumrow"><span>Discount (−)</span><input type="number" id="discount" value="0" min="0" oninput="calc()"></div>
       <div class="reasonrow"><input id="discreason" placeholder="Reason for discount…"></div>
       <div class="grand"><span>Total Payable</span><strong id="grand">Tk 0</strong></div>
@@ -353,11 +379,6 @@ html.exporting .signrow{flex-direction:row !important;align-items:flex-end !impo
       <span>🌐 <b>OMMESGALLERY.XYZ</b></span>
       <span>💬 WhatsApp <b>01534550063</b></span>
       <span>🎥 Real Video Of Every Dress On Our Facebook Page</span>
-    </div>
-
-    <div class="terms">
-      <b>TERMS:</b> Please record a video while opening the parcel — complaints without it cannot be accepted.
-      Report any defect within 24 hours of delivery. Used, cut or stitched items are not exchangeable.
     </div>
   </div>
 
@@ -417,10 +438,34 @@ function calc(){
     tr.querySelector('.linetotal').textContent = tk(t);
     tr.classList.toggle('empty', !p && !tr.querySelector('.desc').value.trim());
   });
+
   const del  = +document.getElementById('delivery').value || 0;
   const disc = +document.getElementById('discount').value || 0;
   const paid = +document.getElementById('paid').value || 0;
-  const grand = Math.max(0, sub + del - disc);
+
+  // Pre-order shipping, charged by weight: rate (Tk/kg) × weight
+  const shipOn     = document.getElementById('shipon');
+  const shiprow    = document.getElementById('shiprow');
+  const shipSumRow = document.getElementById('shipSumRow');
+  let shipping = 0;
+  if (shipOn && shipOn.checked){
+    const rate = +document.getElementById('shiprate').value || 0;
+    const wt   = +document.getElementById('shipwt').value || 0;
+    const unit = (document.querySelector('input[name=shipunit]:checked') || {}).value || 'kg';
+    const kg   = unit === 'g' ? wt / 1000 : wt;
+    shipping   = Math.round(rate * kg);
+    if (shiprow)    shiprow.style.display = '';
+    if (shipSumRow) shipSumRow.style.display = '';
+  } else {
+    if (shiprow)    shiprow.style.display = 'none';
+    if (shipSumRow) shipSumRow.style.display = 'none';
+  }
+  const shipcalc   = document.getElementById('shipcalc');
+  const shipamount = document.getElementById('shipamount');
+  if (shipcalc)   shipcalc.textContent   = tk(shipping);
+  if (shipamount) shipamount.textContent = tk(shipping);
+
+  const grand = Math.max(0, sub + del + shipping - disc);
   document.getElementById('subtotal').textContent = tk(sub);
   document.getElementById('grand').textContent = tk(grand);
   document.getElementById('due').textContent = tk(Math.max(0, grand - paid));
@@ -437,6 +482,10 @@ function newInvoice(){
   ['cname','cphone','caddr','zone','etime','discreason','signname'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('note').value = '';
   ['delivery','discount','paid'].forEach(id => document.getElementById(id).value = 0);
+  // reset pre-order shipping
+  const so = document.getElementById('shipon'); if (so) so.checked = false;
+  ['shiprate','shipwt'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  const su = document.querySelector('input[name=shipunit][value=kg]'); if (su) su.checked = true;
   document.querySelectorAll('.chip input[type=checkbox]').forEach(c => c.checked = false);
   document.querySelectorAll('input[name=pstat],input[name=otype]').forEach(c => c.checked = false);
   document.querySelector('input[name=courier]').checked = true;
@@ -517,6 +566,7 @@ async function buildCanvas(){
   const swaps = [];
   sheet.querySelectorAll('input, textarea').forEach(el => {
     if (el.type === 'checkbox' || el.type === 'radio') return;
+    if (el.offsetParent === null && getComputedStyle(el).display === 'none') return; // skip hidden (e.g. shipping off)
     swaps.push(swapField(el));
   });
 
